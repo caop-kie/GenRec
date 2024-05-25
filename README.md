@@ -14,13 +14,28 @@ Source code for our paper `GenRec: Generative Personalized Sequential Recommenda
 - sentencepiece==0.1.95
 - ipdb==0.13.9
 
+## Model
+
+### Framework
+![framework](./images/GenRec-Framework.png)
+
+### Masking Strategy
+![mask](./images/GenRec-Mask.png)
+
 ## Pretraining
 
 ```Bash
-python genrec/train_genrec.py -c config/config_genrec_pretrain_amazon_sports.json
+python genrec/train.py -c config/config_genrec_pretrain_amazon_sports.json
 ```
 
 ## Finetuning
+
 ```Bash
-python genrec/train_genrec.py -c config/config_genrec_finetune_amazon_sports.json -pmp path_to_pretrained_model
+python genrec/train.py -c config/config_genrec_finetune_amazon_sports.json -pmp path_to_pretrained_model
+```
+
+## Evaluate
+
+```Bash
+python genrec/evaluate.py -c config/config_genrec_finetune_amazon_sports.json
 ```

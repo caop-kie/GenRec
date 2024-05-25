@@ -162,125 +162,123 @@ best_dev_scores = {
 }
 
 cuda_env = CudaEnvironment()
-if config.evaluate:
-    # eval test set
-    logger.info('Evaluating the test dataset.')
-    progress = tqdm.tqdm(total=test_batch_num, ncols=75, desc='Test {}'.format(0))
-    write_output = []
-    test_final_ans_list = []
-    test_final_item20_preds = []
-    # test_gold_arg_num, test_pred_arg_num, test_match_arg_id, test_match_arg_cls = 0, 0, 0, 0
-    for batch_idx, batch in enumerate(DataLoader(test_set, batch_size=config.eval_batch_size,
-                                                 shuffle=False, collate_fn=test_set.collate_fn)):
-        progress.update(1)
+collate_fn = train_set.pretrain_collate_fn if config.pretrain else train_set.collate_fn
+for epoch in range(1, config.max_epoch + 1):
+    logger.info(log_path)
+    logger.info(f"Epoch {epoch}")
+
+    # training
+    progress = tqdm.tqdm(total=train_batch_num, ncols=75, desc='Train {}'.format(epoch))
+    model.train()
+    optimizer.zero_grad()
+    for batch_idx, batch in enumerate(
+            DataLoader(train_set, batch_size=config.train_batch_size // config.accumulate_step,
+                       shuffle=True, drop_last=False, collate_fn=collate_fn)):
         try:
             gpu_batch = move_to_cuda(batch)
-            items_pred = model.predict(gpu_batch, max_length=config.max_output_length)
+            loss = model(gpu_batch)
         except RuntimeError as e:
             if "out of memory" in str(e):
                 logger.warning(
                     "attempting to recover from OOM in forward/backward pass"
                 )
+                optimizer.zero_grad()
                 torch.cuda.empty_cache()
                 continue
             else:
                 raise e
 
-        ans_list = []
-        for t in batch.target_text:
-            tmp = []
-            for tt in t:
-                tmp.append(int(tt.replace('item_', '')))
-            ans_list.append(tmp)
-        test_final_ans_list.extend(ans_list)
-        test_final_item20_preds.extend(items_pred)
-        if len(test_final_ans_list) % 4096 == 0:
-            print('Evaluated: {}, time: {}'.format(len(test_final_ans_list), datetime.datetime.now()))
-        input_text = batch.input_text
+        if batch_idx % 1000 == 0:
+            logger.info('epoch {} batch_idx {} loss {}'.format(epoch, batch_idx, loss))
+
+        # record loss
+        summarizer.scalar_summary('train/loss', loss, summarizer_step)
+        summarizer_step += 1
+
+        loss = loss * (1 / config.accumulate_step)
+        loss.backward()
+
+        if (batch_idx + 1) % config.accumulate_step == 0:
+            progress.update(1)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clipping)
+            optimizer.step()
+            schedule.step()
+            optimizer.zero_grad()
+
     progress.close()
 
-    test_final_ans_array = np.asarray(test_final_ans_list)
-    test_final_item20_preds_array = np.asarray(test_final_item20_preds)
-    score, post_fix = get_full_sort_score(0, test_final_ans_array, test_final_item20_preds_array)
+    if epoch % 10 == 0:
+        logger.info(
+            'Saving epoch_{} model to {}'.format(epoch, os.path.join(output_dir, 'epoch_{}.mdl'.format(epoch))))
+        torch.save(model.state_dict(), os.path.join(output_dir, 'epoch_{}.mdl'.format(epoch)))
 
-    test_scores = {
-        'ndcg@20': score[-1]
-    }
+    if config.finetuning:
+        progress = tqdm.tqdm(total=dev_batch_num, ncols=75, desc='Dev {}'.format(epoch))
+        model.eval()
+        torch.cuda.empty_cache()
+        best_dev_flag = False
+        write_output = []
+        my_output = []
+        dev_gold_arg_num, dev_pred_arg_num, dev_match_arg_id, dev_match_arg_cls = 0, 0, 0, 0
 
-    if test_scores['ndcg@20'] > prev_best_test_scores:
-        prev_best_test_scores = test_scores['ndcg@20']
-        logger.info('Writing test prediction to {}'.format(test_prediction_path))
-        with open(test_prediction_path, 'w') as fw:
-            fw.writelines(post_fix + '\n')
-            for a, p in zip(test_final_ans_list, test_final_item20_preds):
-                line = '{} {}\n'.format(' '.join(list(map(str, a))), ' '.join(list(map(str, p))))
-                fw.writelines(line)
-        logger.info('Current best test score: {}'.format(post_fix))
-else:
-    collate_fn = train_set.pretrain_collate_fn if config.pretrain else train_set.collate_fn
-    for epoch in range(1, config.max_epoch + 1):
-        logger.info(log_path)
-        logger.info(f"Epoch {epoch}")
+        final_ans_list = []
+        final_item20_preds = []
 
-        # training
-        progress = tqdm.tqdm(total=train_batch_num, ncols=75, desc='Train {}'.format(epoch))
-        model.train()
-        optimizer.zero_grad()
-        for batch_idx, batch in enumerate(
-                DataLoader(train_set, batch_size=config.train_batch_size // config.accumulate_step,
-                           shuffle=True, drop_last=False, collate_fn=collate_fn)):
+        for batch_idx, batch in enumerate(DataLoader(dev_set, batch_size=config.eval_batch_size,
+                                                     shuffle=False, collate_fn=dev_set.collate_fn)):
+            progress.update(1)
             try:
                 gpu_batch = move_to_cuda(batch)
-                loss = model(gpu_batch)
+                items_pred = model.predict(gpu_batch, max_length=config.max_output_length)
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     logger.warning(
                         "attempting to recover from OOM in forward/backward pass"
                     )
-                    optimizer.zero_grad()
                     torch.cuda.empty_cache()
                     continue
                 else:
                     raise e
 
-            if batch_idx % 1000 == 0:
-                logger.info('epoch {} batch_idx {} loss {}'.format(epoch, batch_idx, loss))
-
-            # record loss
-            summarizer.scalar_summary('train/loss', loss, summarizer_step)
-            summarizer_step += 1
-
-            loss = loss * (1 / config.accumulate_step)
-            loss.backward()
-
-            if (batch_idx + 1) % config.accumulate_step == 0:
-                progress.update(1)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_clipping)
-                optimizer.step()
-                schedule.step()
-                optimizer.zero_grad()
+            ans_list = []
+            for t in batch.target_text:
+                tmp = [int(t[-1].replace('item_', ''))]
+                ans_list.append(tmp)
+            final_ans_list.extend(ans_list)
+            final_item20_preds.extend(items_pred)
 
         progress.close()
 
-        if epoch % 10 == 0:
-            logger.info(
-                'Saving epoch_{} model to {}'.format(epoch, os.path.join(output_dir, 'epoch_{}.mdl'.format(epoch))))
-            torch.save(model.state_dict(), os.path.join(output_dir, 'epoch_{}.mdl'.format(epoch)))
+        final_ans_array = np.asarray(final_ans_list)
+        final_item20_preds_array = np.asarray(final_item20_preds)
+        score, post_fix = get_full_sort_score(epoch, final_ans_array, final_item20_preds_array)
 
-        if config.finetuning:
-            progress = tqdm.tqdm(total=dev_batch_num, ncols=75, desc='Dev {}'.format(epoch))
-            model.eval()
-            torch.cuda.empty_cache()
-            best_dev_flag = False
+        # if best dev, save model and evaluate test set
+        if score[-1] > best_dev_scores['ndcg@20']:
+            best_dev_scores = {
+                'ndcg@20': score[-1]
+            }
+            best_dev_epoch = epoch
+
+            # save best model
+            logger.info('Saving best dev model to {}'.format(best_model_path))
+            torch.save(model.state_dict(), best_model_path)
+
+            logger.info('Writing dev prediction to {}'.format(dev_prediction_path))
+            with open(dev_prediction_path, 'w') as fw:
+                fw.writelines(post_fix + '\n')
+                for a, p in zip(final_ans_list, final_item20_preds):
+                    line = '{} {}\n'.format(' '.join(list(map(str, a))), ' '.join(list(map(str, p))))
+                    fw.writelines(line)
+
+            # eval test set
+            logger.info('Evaluating the test dataset.')
+            progress = tqdm.tqdm(total=test_batch_num, ncols=75, desc='Test {}'.format(epoch))
             write_output = []
-            my_output = []
-            dev_gold_arg_num, dev_pred_arg_num, dev_match_arg_id, dev_match_arg_cls = 0, 0, 0, 0
-
-            final_ans_list = []
-            final_item20_preds = []
-
-            for batch_idx, batch in enumerate(DataLoader(dev_set, batch_size=config.eval_batch_size,
-                                                         shuffle=False, collate_fn=dev_set.collate_fn)):
+            test_final_ans_list = []
+            test_final_item20_preds = []
+            for batch_idx, batch in enumerate(DataLoader(test_set, batch_size=config.eval_batch_size,
+                                                         shuffle=False, collate_fn=test_set.collate_fn)):
                 progress.update(1)
                 try:
                     gpu_batch = move_to_cuda(batch)
@@ -297,82 +295,29 @@ else:
 
                 ans_list = []
                 for t in batch.target_text:
-                    tmp = [int(t[-1].replace('item_', ''))]
+                    tmp = []
+                    for tt in t:
+                        tmp.append(int(tt.replace('item_', '')))
                     ans_list.append(tmp)
-                final_ans_list.extend(ans_list)
-                final_item20_preds.extend(items_pred)
-
+                test_final_ans_list.extend(ans_list)
+                test_final_item20_preds.extend(items_pred)
+                if len(test_final_ans_list) % 4096 == 0:
+                    print('Evaluated: {}, time: {}'.format(len(test_final_ans_list), datetime.datetime.now()))
             progress.close()
 
-            final_ans_array = np.asarray(final_ans_list)
-            final_item20_preds_array = np.asarray(final_item20_preds)
-            score, post_fix = get_full_sort_score(epoch, final_ans_array, final_item20_preds_array)
+            test_final_ans_array = np.asarray(test_final_ans_list)
+            test_final_item20_preds_array = np.asarray(test_final_item20_preds)
+            score, post_fix = get_full_sort_score(0, test_final_ans_array, test_final_item20_preds_array)
 
-            # if best dev, save model and evaluate test set
-            if score[-1] > best_dev_scores['ndcg@20']:
-                best_dev_scores = {
-                    'ndcg@20': score[-1]
-                }
-                best_dev_epoch = epoch
-
-                # save best model
-                logger.info('Saving best dev model to {}'.format(best_model_path))
-                torch.save(model.state_dict(), best_model_path)
-
-                logger.info('Writing dev prediction to {}'.format(dev_prediction_path))
-                with open(dev_prediction_path, 'w') as fw:
+            if score[-1] > prev_best_test_scores:
+                prev_best_test_scores = score[-1]
+                logger.info('Writing test prediction to {}'.format(test_prediction_path))
+                with open(test_prediction_path, 'w') as fw:
                     fw.writelines(post_fix + '\n')
-                    for a, p in zip(final_ans_list, final_item20_preds):
+                    for a, p in zip(test_final_ans_list, test_final_item20_preds):
                         line = '{} {}\n'.format(' '.join(list(map(str, a))), ' '.join(list(map(str, p))))
                         fw.writelines(line)
-
-                # eval test set
-                logger.info('Evaluating the test dataset.')
-                progress = tqdm.tqdm(total=test_batch_num, ncols=75, desc='Test {}'.format(epoch))
-                write_output = []
-                test_final_ans_list = []
-                test_final_item20_preds = []
-                for batch_idx, batch in enumerate(DataLoader(test_set, batch_size=config.eval_batch_size,
-                                                             shuffle=False, collate_fn=test_set.collate_fn)):
-                    progress.update(1)
-                    try:
-                        gpu_batch = move_to_cuda(batch)
-                        items_pred = model.predict(gpu_batch, max_length=config.max_output_length)
-                    except RuntimeError as e:
-                        if "out of memory" in str(e):
-                            logger.warning(
-                                "attempting to recover from OOM in forward/backward pass"
-                            )
-                            torch.cuda.empty_cache()
-                            continue
-                        else:
-                            raise e
-
-                    ans_list = []
-                    for t in batch.target_text:
-                        tmp = []
-                        for tt in t:
-                            tmp.append(int(tt.replace('item_', '')))
-                        ans_list.append(tmp)
-                    test_final_ans_list.extend(ans_list)
-                    test_final_item20_preds.extend(items_pred)
-                    if len(test_final_ans_list) % 4096 == 0:
-                        print('Evaluated: {}, time: {}'.format(len(test_final_ans_list), datetime.datetime.now()))
-                progress.close()
-
-                test_final_ans_array = np.asarray(test_final_ans_list)
-                test_final_item20_preds_array = np.asarray(test_final_item20_preds)
-                score, post_fix = get_full_sort_score(0, test_final_ans_array, test_final_item20_preds_array)
-
-                if score[-1] > prev_best_test_scores:
-                    prev_best_test_scores = score[-1]
-                    logger.info('Writing test prediction to {}'.format(test_prediction_path))
-                    with open(test_prediction_path, 'w') as fw:
-                        fw.writelines(post_fix + '\n')
-                        for a, p in zip(test_final_ans_list, test_final_item20_preds):
-                            line = '{} {}\n'.format(' '.join(list(map(str, a))), ' '.join(list(map(str, p))))
-                            fw.writelines(line)
-                    logger.info('Current best test score: {}'.format(post_fix))
+                logger.info('Current best test score: {}'.format(post_fix))
 
 logger.info(log_path)
 logger.info("Done!")
