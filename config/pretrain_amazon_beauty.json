@@ -1,0 +1,19 @@
+{
+    "dataset": "amazon_beauty",
+    "gpu_device": 0,
+    "seed": 0,
+    "train_file": "../datasets/amazon_beauty_train.csv",
+    "output_dir": "../output",
+    "cache_dir": "../cache",
+    "model_name": "facebook/bart-base",
+    "max_epoch": 50,
+    "warmup_epoch": 5,
+    "train_batch_size": 16,
+    "accumulate_step": 1,
+    "learning_rate": 1e-05,
+    "weight_decay": 1e-05,
+    "grad_clipping": 5.0,
+    "max_length": 512,
+    "max_output_length": 50,
+    "ignore_first_header": false 
+}
