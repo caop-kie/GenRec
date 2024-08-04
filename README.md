@@ -1,6 +1,6 @@
 # GenRec: Generative Personalized Sequential Recommendation
 
-Source code for our paper `GenRec: Generative Personalized Sequential Recommendation` submitted to 2024 RecSys.
+Source code for our paper `GenRec: Generative Personalized Sequential Recommendation`.
 
 ## Environment
 - Python==3.8
@@ -39,3 +39,5 @@ python genrec/train.py -c config/finetune_amazon_sports.json -pmp path_to_pretra
 ```Bash
 python genrec/evaluate.py -c config/finetune_amazon_sports.json
 ```
+
+Please raise your questions or comments in the issues.
