@@ -1,6 +1,6 @@
 # GenRec: Generative Personalized Sequential Recommendation
 
-Source code for our paper `GenRec: Generative Personalized Sequential Recommendation`.
+Source code for our paper `GenRec: Generative Sequential Recommendation with Large Language Models`.
 
 ## Environment
 - Python==3.8
@@ -31,13 +31,13 @@ python genrec/train.py -c config/pretrain_amazon_sports.json
 ## Finetuning
 
 ```Bash
-python genrec/train.py -c config/finetune_amazon_sports.json -pmp path_to_pretrained_model
+python genrec/train.py -c config/finetune_amazon_sports.json -pmp output/20240828_204904/epoch_10.mdl
 ```
 
 ## Evaluate
 
 ```Bash
-python genrec/evaluate.py -c config/finetune_amazon_sports.json
+python genrec/evaluate.py -c config/evaluate_amazon_sports.json
 ```
 
 Please raise your questions or comments in the issues.

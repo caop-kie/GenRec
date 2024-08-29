@@ -18,13 +18,11 @@ class Dataset(torch.utils.data.Dataset):
             self.max_output_length = max_output_length
         self.path = path
         self.no_bos = no_bos  # if you use bart, then this should be False; if you use t5, then this should be True
-        self.dataset = dataset
-        if self.dataset is None:
-            self.data = []
-            if is_pretrain:
-                self.load_pretrain_data()
-            else:
-                self.load_data(unseen_types)
+        self.data = []
+        if is_pretrain:
+            self.load_pretrain_data()
+        else:
+            self.load_data()
         if is_pretrain:
             _lambda = 3.0
             lambda_to_the_k = 1
@@ -45,49 +43,10 @@ class Dataset(torch.utils.data.Dataset):
         self.mask_idx = self.tokenizer.encode('<mask>', add_special_tokens=True)[1]
 
     def __len__(self):
-        if self.dataset is None:
-            return len(self.data)
-        else:
-            return len(self.dataset)
+        return len(self.data)
 
     def __getitem__(self, index):
-        if self.dataset is None:
-            item = self.data[index]
-            return item
-        else:
-            uniq_id, user_items, ref = self.dataset[index]
-            texts, attrs, user_whole, item_whole = [], [], [], []
-            for t in user_items.split('\sep'):
-                word, attr = t.split('\i')[0], t.split('\i')[1]
-                texts.append(word)
-                if 'item_' in word:
-                    user_whole.append(0)
-                    item_whole.append(int(word.replace('item_', '')))
-                    attrs.append(attr.strip().split(', '))
-                    continue
-                elif 'user_' in word:
-                    user_whole.append(int(word.replace('user_', '')))
-                    item_whole.append(0)
-                    attrs.append([0])
-                    continue
-                attrs.append([0])
-                user_whole.append(0)
-                item_whole.append(0)
-
-            texts.append('?')
-            attrs.append([0])
-            user_whole.append(0)
-            item_whole.append(0)
-
-            example = {
-                'text': texts,
-                'attrs': attrs,
-                'user_whole': user_whole,
-                'item_whole': item_whole,
-                'target': ref.replace('\n', '')
-            }
-
-            return example
+        return self.data[index]
 
     def load_pretrain_data(self):
         with open(self.path, 'r') as f:
@@ -133,7 +92,7 @@ class Dataset(torch.utils.data.Dataset):
 
         logger.info(f'Loaded {len(self)} instances from {self.path}')
 
-    def load_data(self, unseen_types):
+    def load_data(self):
         with open(self.path, 'r') as f:
             data = f.readlines()
 
@@ -179,7 +138,7 @@ class Dataset(torch.utils.data.Dataset):
         input_text = [x['text'] for x in batch]
         input_item_wholes = [x['item_whole'] for x in batch]
         input_user_wholes = [x['user_whole'] for x in batch]
-        # input_attrs = [x['attrs'] for x in batch]
+        input_attrs = [x['attrs'] for x in batch]
 
         # encoder inputs
         tokenized_inputs = self.tokenizer(input_text,
@@ -192,7 +151,7 @@ class Dataset(torch.utils.data.Dataset):
 
         enc_idxs = []
         enc_attn = []
-        # aligned_attrs = []
+        aligned_attrs = []
         aligned_user_wholes = []
         aligned_item_wholes = []
         for batch_index in range(len(tokenized_inputs["input_ids"])):
@@ -201,7 +160,7 @@ class Dataset(torch.utils.data.Dataset):
 
             item_whole = input_item_wholes[org_batch_index]
             user_whole = input_user_wholes[org_batch_index]
-            # input_attr = input_attrs[org_batch_index]
+            input_attr = input_attrs[org_batch_index]
             previous_word_idx = None
             user_whole_inputs = []
             item_whole_inputs = []
@@ -215,13 +174,13 @@ class Dataset(torch.utils.data.Dataset):
                 elif word_idx != previous_word_idx:
                     user_whole_inputs.append(user_whole[word_idx])
                     item_whole_inputs.append(item_whole[word_idx])
-                    # attr_inputs.append(input_attr[word_idx])
+                    attr_inputs.append(input_attr[word_idx])
                 # For the other tokens in a word, we set the label to either the current label or -100, depending on
                 # the label_all_tokens flag.
                 else:
                     user_whole_inputs.append(user_whole[word_idx])
                     item_whole_inputs.append(item_whole[word_idx])
-                    # attr_inputs.append(input_attr[word_idx])
+                    attr_inputs.append(input_attr[word_idx])
                 previous_word_idx = word_idx
 
             tokens, attn_mask = tokenized_inputs['input_ids'][batch_index], tokenized_inputs['attention_mask'][batch_index]
@@ -243,7 +202,7 @@ class Dataset(torch.utils.data.Dataset):
 
             aligned_user_wholes.append(user_whole_inputs)
             aligned_item_wholes.append(item_whole_inputs)
-            # aligned_attrs.append(attr_inputs)
+            aligned_attrs.append(attr_inputs)
             enc_idxs.append(tokens)
             enc_attn.append(attn_mask)
 
@@ -251,7 +210,7 @@ class Dataset(torch.utils.data.Dataset):
         enc_attn = torch.stack(enc_attn, dim=0)
         tokenized_inputs["user_wholes"] = aligned_user_wholes
         tokenized_inputs["item_wholes"] = aligned_item_wholes
-        # tokenized_inputs["attrs"] = aligned_attrs
+        tokenized_inputs["attrs"] = aligned_attrs
 
         llm_batch = tokenized_inputs
         enc_user_whole = torch.tensor(llm_batch['user_wholes'], dtype=int)

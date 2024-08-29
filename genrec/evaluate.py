@@ -29,9 +29,9 @@ timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
 output_dir = os.path.join(config.output_dir, timestamp)
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-log_path = os.path.join(output_dir, "train.log")
+log_path = os.path.join(output_dir, "evaluate.log")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(message)s', datefmt='[%Y-%m-%d %H:%M:%S]',
-                    handlers=[logging.FileHandler(os.path.join(output_dir, "train.log")), logging.StreamHandler()])
+                    handlers=[logging.FileHandler(os.path.join(output_dir, "evaluate.log")), logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 logger.info(f"\n{pprint.pformat(vars(config), indent=4)}")
 summarizer = Summarizer(output_dir)
@@ -42,9 +42,13 @@ torch.cuda.set_device(config.gpu_device)
 # output
 with open(os.path.join(output_dir, 'config.json'), 'w') as fp:
     json.dump(vars(config), fp, indent=4)
-best_model_path = os.path.join(output_dir, 'best_model.mdl')
-dev_prediction_path = os.path.join(output_dir, 'pred.dev.txt')
 test_prediction_path = os.path.join(output_dir, 'pred.test.txt')
+
+# set GPU device
+torch.cuda.set_device(config.gpu_device)
+
+# evaluate model path
+model_path = config.evaluate_model_path
 
 # tokenizer
 tokenizer = AutoTokenizer.from_pretrained(config.model_name, cache_dir=config.cache_dir, add_prefix_space=True)
@@ -70,8 +74,11 @@ model = GenerativeModel(config, tokenizer,
                         decoder_layers=6,
                         decoder_attention_heads=12)
 
-model.cuda(device=config.gpu_device)
+logger.info("Loading model from {}".format(model_path))
+model.load_state_dict(torch.load(model_path, map_location=f'cuda:{config.gpu_device}'), strict=False)
+logger.info("Loaded model from {}".format(model_path))
 
+model.cuda(device=config.gpu_device)
 
 # Calculates the ideal discounted cumulative gain at k
 def idcg_k(k):
@@ -128,6 +135,7 @@ progress = tqdm.tqdm(total=test_batch_num, ncols=75, desc='Test {}'.format(0))
 write_output = []
 test_final_ans_list = []
 test_final_item20_preds = []
+model.eval()
 for batch_idx, batch in enumerate(DataLoader(test_set, batch_size=config.eval_batch_size,
                                              shuffle=False, collate_fn=test_set.collate_fn)):
     progress.update(1)
@@ -172,5 +180,4 @@ with open(test_prediction_path, 'w') as fw:
         fw.writelines(line)
 logger.info('Current best test score: {}'.format(post_fix))
 
-logger.info(log_path)
 logger.info("Done!")

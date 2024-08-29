@@ -61,16 +61,15 @@ if config.pretrain:
                         config.train_file,
                         config.max_output_length,
                         is_pretrain=True)
-    dev_set = train_set
-    test_set = train_set
 else:
     train_set = Dataset(tokenizer, config.max_length, config.train_file, config.max_output_length)
     dev_set = Dataset(tokenizer, config.max_length, config.dev_file, config.max_output_length)
     test_set = Dataset(tokenizer, config.max_length, config.test_file, config.max_output_length)
 
+    dev_batch_num = len(dev_set) // config.eval_batch_size + (len(dev_set) % config.eval_batch_size != 0)
+    test_batch_num = len(test_set) // config.eval_batch_size + (len(test_set) % config.eval_batch_size != 0)
+
 train_batch_num = len(train_set) // config.train_batch_size + (len(train_set) % config.train_batch_size != 0)
-dev_batch_num = len(dev_set) // config.eval_batch_size + (len(dev_set) % config.eval_batch_size != 0)
-test_batch_num = len(test_set) // config.eval_batch_size + (len(test_set) % config.eval_batch_size != 0)
 
 # initialize the model
 model = GenerativeModel(config, tokenizer,
@@ -212,7 +211,8 @@ for epoch in range(1, config.max_epoch + 1):
             'Saving epoch_{} model to {}'.format(epoch, os.path.join(output_dir, 'epoch_{}.mdl'.format(epoch))))
         torch.save(model.state_dict(), os.path.join(output_dir, 'epoch_{}.mdl'.format(epoch)))
 
-    if config.finetuning:
+    # If it is not pretraining, then evaluate the dev and test set.
+    if not config.pretrain:
         progress = tqdm.tqdm(total=dev_batch_num, ncols=75, desc='Dev {}'.format(epoch))
         model.eval()
         torch.cuda.empty_cache()

@@ -1,14 +1,18 @@
 {
-    "dataset": "amazon_beauty",
+    "dataset": "amazon_sports",
     "gpu_device": 0,
     "seed": 0,
-    "train_file": "datasets/amazon_beauty_train.csv",
+    "train_file": "datasets/amazon_sports_train.csv",
+    "dev_file": "datasets/amazon_sports_val.csv",
+    "test_file": "datasets/amazon_sports_test.csv",
     "output_dir": "output",
+    "evaluate_model_path": "output/20240828_213559/best_model.mdl",
     "cache_dir": "cache",
     "model_name": "facebook/bart-base",
-    "max_epoch": 50,
+    "max_epoch": 25,
     "warmup_epoch": 5,
     "train_batch_size": 16,
+    "eval_batch_size": 16,
     "accumulate_step": 1,
     "learning_rate": 1e-05,
     "weight_decay": 1e-05,
@@ -16,6 +20,5 @@
     "max_length": 512,
     "max_output_length": 50,
     "ignore_first_header": false,
-    "pretrain": true,
-    "evaluate": false
+    "pretrain": false
 }

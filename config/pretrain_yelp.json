@@ -2,9 +2,9 @@
     "dataset": "yelp",
     "gpu_device": 0,
     "seed": 0,
-    "train_file": "../datasets/yelp_train.csv",
-    "output_dir": "../output",
-    "cache_dir": "../cache",
+    "train_file": "datasets/yelp_train.csv",
+    "output_dir": "output",
+    "cache_dir": "cache",
     "model_name": "facebook/bart-base",
     "max_epoch": 50,
     "warmup_epoch": 5,
@@ -15,5 +15,7 @@
     "grad_clipping": 5.0,
     "max_length": 512,
     "max_output_length": 50,
-    "ignore_first_header": false 
+    "ignore_first_header": false,
+    "pretrain": true,
+    "evaluate": false
 }
