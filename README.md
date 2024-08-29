@@ -1,4 +1,4 @@
-# GenRec: Generative Personalized Sequential Recommendation
+# GenRec: Generative Sequential Recommendation with Large Language Models
 
 Source code for our paper `GenRec: Generative Sequential Recommendation with Large Language Models`.
 
@@ -21,6 +21,9 @@ Source code for our paper `GenRec: Generative Sequential Recommendation with Lar
 
 ### Masking Strategy
 ![mask](./images/GenRec-Mask.png)
+
+## Datasets
+Finetune datasets are available in the datasets folder. We will publish the pretrain datasets soon.
 
 ## Pretraining
 
