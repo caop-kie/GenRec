@@ -23,7 +23,8 @@ Source code for our paper `GenRec: Generative Sequential Recommendation with Lar
 ![mask](./images/GenRec-Mask.png)
 
 ## Datasets
-Finetuning datasets are available in the datasets folder. We will publish the pretrain datasets soon.
+Finetuning datasets are available in the datasets folder. We will publish the pretraining datasets soon.
+Please watch this [video](https://www.youtube.com/watch?v=T6vc36xiD2k&t=4s) for more details about the dataset generation.
 
 ## Pretraining
 
