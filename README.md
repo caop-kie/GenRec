@@ -1,6 +1,6 @@
 # GenRec: Generative Sequential Recommendation with Large Language Models
 
-Source code for our paper `GenRec: Generative Sequential Recommendation with Large Language Models`.
+Source code for our [paper](https://arxiv.org/abs/2407.21191) `GenRec: Generative Sequential Recommendation with Large Language Models`.
 
 ## Environment
 - Python==3.8
